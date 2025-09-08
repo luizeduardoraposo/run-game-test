@@ -1,8 +1,18 @@
 // Run Infinito 3D - Esqueleto básico
+// Integração com IA via window.aiAgent (browser)
 let scene, camera, renderer, player, ground, obstacles = [], coins = [], score = 0;
-let speed = 0.2, lane = 0, lanes = [-2, 0, 2], isJumping = false, jumpSpeed = 0, gravity = 0.01;
+let highscore = 0, games = 1;
+let speed = 0.2, lane = 1, lanes = [-2, 0, 2], isJumping = false, jumpSpeed = 0, gravity = 0.01;
 
 function init() {
+  // Carrega meta da IA se disponível
+  if (window.aiAgent && window.aiAgent.getMeta) {
+    const meta = window.aiAgent.getMeta();
+    if (meta) {
+      highscore = meta.highscore || 0;
+      games = meta.games || 1;
+    }
+  }
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222233);
 
@@ -40,7 +50,7 @@ function init() {
     spawnCoin(i * -20 - 10);
   }
 
-  document.addEventListener('keydown', onKeyDown);
+  // document.addEventListener('keydown', onKeyDown); // Desabilita controle manual
   window.addEventListener('resize', onWindowResize);
   animate();
 }
@@ -82,19 +92,15 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+
+// IA: importa o agente
+
 function animate() {
   requestAnimationFrame(animate);
 
-  // Movimento do jogador
-  player.position.x += (lanes[lane] - player.position.x) * 0.2;
-  if (isJumping) {
-    player.position.y += jumpSpeed;
-    jumpSpeed -= gravity;
-    if (player.position.y <= 1) {
-      player.position.y = 1;
-      isJumping = false;
-    }
-  }
+  // Recompensa: +1 por moeda, -10 por colisão, 0 caso contrário
+  let reward = 0;
+  let gameOver = false;
 
   // Movimento dos obstáculos e moedas
   for (let obs of obstacles) {
@@ -104,9 +110,9 @@ function animate() {
       obs.position.x = lanes[Math.floor(Math.random() * 3)];
     }
     // Colisão
-    if (Math.abs(obs.position.z - player.position.z) < 1.2 && Math.abs(obs.position.x - player.position.x) < 0.9 && player.position.y < 2) {
-      alert('Game Over! Pontuação: ' + score);
-      window.location.reload();
+    if (Math.abs(obs.position.z - player.position.z) < 1.2 && Math.abs(obs.position.x - player.position.x) < 0.9) {
+      reward = -10;
+      gameOver = true;
     }
   }
   for (let coin of coins) {
@@ -116,15 +122,55 @@ function animate() {
       coin.position.x = lanes[Math.floor(Math.random() * 3)];
     }
     // Coleta
-    if (Math.abs(coin.position.z - player.position.z) < 1.2 && Math.abs(coin.position.x - player.position.x) < 0.9 && player.position.y > 1) {
+    if (
+      Math.abs(coin.position.z - player.position.z) < 1.2 &&
+      Math.abs(coin.position.x - player.position.x) < 0.9
+    ) {
+      reward = 1;
       score++;
-      document.getElementById('score').textContent = 'Moedas: ' + score;
+      // Atualiza highscore
+      if (score > highscore) {
+        highscore = score;
+        if (window.aiAgent && window.aiAgent.setMeta) window.aiAgent.setMeta({ highscore, games });
+      }
       coin.position.z -= 200;
       coin.position.x = lanes[Math.floor(Math.random() * 3)];
     }
   }
 
+  // Chama a IA para decidir ação
+  let action = window.aiAgent.aiStep(player, obstacles, coins, reward, gameOver);
+  // Executa ação
+  if (action === 0 && lane > 0) lane--;
+  if (action === 2 && lane < 2) lane++;
+  // Movimento do jogador
+  player.position.x += (lanes[lane] - player.position.x) * 0.2;
+
+  if (gameOver) {
+    // Reinicia o jogo
+    for (let i = 0; i < obstacles.length; i++) {
+      obstacles[i].position.z = -20 - i * 20;
+      obstacles[i].position.x = lanes[Math.floor(Math.random() * 3)];
+    }
+    for (let i = 0; i < coins.length; i++) {
+      coins[i].position.z = -10 - i * 20;
+      coins[i].position.x = lanes[Math.floor(Math.random() * 3)];
+    }
+    player.position.x = 0;
+    player.position.y = 1;
+    lane = 1;
+    if (score > highscore) {
+      highscore = score;
+    }
+    games++;
+    if (window.aiAgent && window.aiAgent.setMeta) window.aiAgent.setMeta({ highscore, games });
+    score = 0;
+    // Pequeno delay para evitar múltiplos resets
+    setTimeout(() => { }, 200);
+  }
+
   renderer.render(scene, camera);
 }
 
+// Inicializa normalmente, IA já estará disponível se index.html carregar ai_agent.js antes
 init();
