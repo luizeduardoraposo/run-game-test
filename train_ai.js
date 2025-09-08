@@ -1,6 +1,11 @@
 // train_ai.js - Treinador de IA para Node.js (simulação sem renderização)
+const { loadData, saveData } = require('./storage');
 const { aiStep, getMeta, setMeta, getQTable, setQTable } = require('./ai_agent');
-const { saveData } = require('./storage');
+
+// Carrega dados existentes antes de treinar
+const { Q, meta } = loadData();
+setQTable(Q);
+setMeta(meta);
 
 // Parâmetros do ambiente simulado
 const lanes = [-2, 0, 2];
